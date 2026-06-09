@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#d9f2c9">
+  <title>Praga - Survivor</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main id="gameShell" aria-label="Praga">
+    <canvas id="gameCanvas"></canvas>
+
+    <section id="hud" class="hud is-hidden" aria-live="polite">
+      <div class="hudTop">
+        <div class="statBox hpBox">
+          <span>HP</span>
+          <div class="bar"><i id="hpFill"></i></div>
+          <b id="hpText">50/50</b>
+        </div>
+        <div class="statBox xpBox">
+          <span>LV</span>
+          <div class="bar"><i id="xpFill"></i></div>
+          <b id="levelText">1</b>
+        </div>
+        <div class="pill" id="timeText">00:00</div>
+        <div class="pill" id="killText">0 KOs</div>
+        <div class="pill" id="goldText">0 ouro</div>
+      </div>
+      <div id="loadout" class="loadout"></div>
+      <div id="toast" class="toast"></div>
+    </section>
+
+    <div id="joystick" class="joystick" aria-hidden="true">
+      <div class="joyBase"></div>
+      <div id="joyKnob" class="joyKnob"></div>
+    </div>
+
+    <section id="menuScreen" class="screen">
+      <div class="menuHero">
+        <p class="eyebrow">Survivor rapido</p>
+        <h1>PRAGA</h1>
+        <p class="tagline">Entre, clique em jogar e sobreviva a horda.</p>
+        <button id="playButton" class="primaryBtn">Jogar</button>
+      </div>
+
+      <div id="returningPanel" class="returningPanel is-hidden">
+        <div>
+          <h2>Personagem</h2>
+          <div id="characterGrid" class="choiceGrid"></div>
+        </div>
+        <div>
+          <h2>Mapa</h2>
+          <div id="mapGrid" class="choiceGrid mapGrid"></div>
+        </div>
+        <div class="shopBox">
+          <h2>Mana <span id="manaText">0</span></h2>
+          <div id="shopGrid" class="shopGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="levelScreen" class="screen overlayScreen is-hidden">
+      <div class="levelWrap">
+        <p class="eyebrow">Level up</p>
+        <h2>Escolha uma melhoria</h2>
+        <div id="cardGrid" class="cardGrid"></div>
+      </div>
+    </section>
+
+    <section id="endScreen" class="screen overlayScreen is-hidden">
+      <div class="endPanel">
+        <p id="endEyebrow" class="eyebrow">Run encerrada</p>
+        <h2 id="endTitle">Fim da run</h2>
+        <div id="endStats" class="endStats"></div>
+        <div class="endActions">
+          <button id="againButton" class="primaryBtn">Jogar de novo</button>
+          <button id="menuButton" class="ghostBtn">Voltar</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="./game.js"></script>
+</body>
+</html>
