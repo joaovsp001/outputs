@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#d9f2c9">
   <title>Praga - Survivor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Lilita+One&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
+  <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 </head>
 <body>
   <main id="gameShell" aria-label="Praga">
@@ -36,25 +40,47 @@
       <div id="joyKnob" class="joyKnob"></div>
     </div>
 
-    <section id="menuScreen" class="screen">
+    <div id="sysBtns" class="sysBtns is-hidden">
+      <button id="pauseBtn" class="iconBtn" aria-label="Pausar" title="Pausar">II</button>
+      <button id="muteBtn" class="iconBtn" aria-label="Som" title="Som">🔊</button>
+    </div>
+
+    <section id="menuScreen" class="screen menuScreen">
       <div class="menuHero">
-        <p class="eyebrow">Survivor rapido</p>
+        <p class="eyebrow">Sobreviva ate o amanhecer</p>
         <h1>PRAGA</h1>
-        <p class="tagline">Entre, clique em jogar e sobreviva a horda.</p>
-        <button id="playButton" class="primaryBtn">Jogar</button>
+        <p class="tagline">A horda desperta sob a luz da mana.</p>
+        <div class="heroActions">
+          <button id="playButton" class="primaryBtn">Jogar</button>
+          <button id="shopOpenButton" class="primaryBtn secondaryBtn">Loja</button>
+        </div>
       </div>
 
-      <div id="returningPanel" class="returningPanel is-hidden">
-        <div>
+      <div id="returningPanel" class="returningPanel">
+        <div class="menuControls">
+          <section class="mapPanel">
+            <h2>Mapa</h2>
+            <div id="mapGrid" class="choiceGrid mapGrid"></div>
+          </section>
+        </div>
+
+        <section class="characterShelf">
           <h2>Personagem</h2>
+          <div class="characterShelfScroll">
           <div id="characterGrid" class="choiceGrid"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="shopScreen" class="screen shopScreen is-hidden" aria-label="Loja">
+      <div class="shopStage">
+        <div class="shopTopbar">
+          <button id="shopBackButton" class="ghostBtn">Voltar</button>
+          <h2>Loja</h2>
+          <div class="manaBadge">Mana <span id="manaText">0</span></div>
         </div>
-        <div>
-          <h2>Mapa</h2>
-          <div id="mapGrid" class="choiceGrid mapGrid"></div>
-        </div>
-        <div class="shopBox">
-          <h2>Mana <span id="manaText">0</span></h2>
+        <div class="shopBoard">
           <div id="shopGrid" class="shopGrid"></div>
         </div>
       </div>

@@ -21,8 +21,11 @@
     joystick: document.getElementById("joystick"),
     joyKnob: document.getElementById("joyKnob"),
     menu: document.getElementById("menuScreen"),
+    shopScreen: document.getElementById("shopScreen"),
     returningPanel: document.getElementById("returningPanel"),
     playButton: document.getElementById("playButton"),
+    shopOpenButton: document.getElementById("shopOpenButton"),
+    shopBackButton: document.getElementById("shopBackButton"),
     charGrid: document.getElementById("characterGrid"),
     mapGrid: document.getElementById("mapGrid"),
     shopGrid: document.getElementById("shopGrid"),
@@ -34,7 +37,10 @@
     endTitle: document.getElementById("endTitle"),
     endStats: document.getElementById("endStats"),
     againButton: document.getElementById("againButton"),
-    menuButton: document.getElementById("menuButton")
+    menuButton: document.getElementById("menuButton"),
+    sysBtns: document.getElementById("sysBtns"),
+    pauseBtn: document.getElementById("pauseBtn"),
+    muteBtn: document.getElementById("muteBtn")
   };
 
   const RARITIES = [
@@ -174,15 +180,12 @@
     drops: null
   };
 
-  SPRITE_PATHS.characters.arcano_idle = "assets/sprites/generated_hero_idle.png";
-  SPRITE_PATHS.characters.arcano_walk = "assets/sprites/generated_hero_walk.png";
-
   const ENEMY_TYPES = {
     slime: { name: "Slime", hp: 8, speed: 80, dmg: 8, xp: 2, r: 12, color: "#65c96d", kind: "slime" },
     goblin: { name: "Goblin", hp: 6, speed: 120, dmg: 7, xp: 2, r: 11, color: "#80b950", kind: "goblin" },
     bat: { name: "Morcego", hp: 4, speed: 160, dmg: 6, xp: 3, r: 9, color: "#8b72d9", kind: "bat" },
     skeleton: { name: "Esqueleto", hp: 10, speed: 95, dmg: 9, xp: 3, r: 11, color: "#f2ead5", kind: "skeleton" },
-    golem: { name: "Golem", hp: 30, speed: 50, dmg: 16, xp: 6, r: 18, color: "#a89d8d", kind: "golem" },
+    golem: { name: "Golem", hp: 90, speed: 50, dmg: 16, xp: 10, r: 18, color: "#a89d8d", kind: "golem" },
     bomber: { name: "Bombardeiro", hp: 10, speed: 100, dmg: 20, xp: 4, r: 10, color: "#f28b47", kind: "bomber" }
   };
 
@@ -202,7 +205,9 @@
     haste: { name: "Velocidade", code: "VEL", desc: "Ataques saem mais rapido." },
     crit: { name: "Golpe Critico", code: "CRI", desc: "Mais chance e dano critico." },
     multishot: { name: "Multitiro", code: "MUL", desc: "Mais projetil em leque." },
-    armor: { name: "Armadura", code: "ARM", desc: "Dano recebido menor." }
+    armor: { name: "Armadura", code: "ARM", desc: "Dano recebido menor." },
+    frost: { name: "Gelo", code: "GEL", desc: "Hits podem reduzir a velocidade dos inimigos." },
+    luck: { name: "Sorte", code: "SOR", desc: "Melhora as chances de raridades altas." }
   };
 
   const SHOP_ITEMS = [
@@ -211,7 +216,8 @@
     { id: "shadow", kind: "weapon", cost: 350, name: "Servo Sombrio", desc: "Aliado que escala com o level." },
     { id: "hp", kind: "upgrade", cost: 70, name: "+HP", desc: "Mais vida maxima permanente." },
     { id: "damage", kind: "upgrade", cost: 90, name: "+Dano", desc: "Todas as armas batem mais forte." },
-    { id: "speed", kind: "upgrade", cost: 85, name: "+Movimento", desc: "Mais velocidade permanente." }
+    { id: "speed", kind: "upgrade", cost: 85, name: "+Movimento", desc: "Mais velocidade permanente." },
+    { id: "luck", kind: "upgrade", cost: 120, name: "+Sorte", desc: "Raridades melhores aparecem com mais frequencia." }
   ];
 
   const keys = new Set();
@@ -237,6 +243,99 @@
   let game = null;
   let audio = null;
 
+  const CG = (typeof window !== "undefined" && window.CrazyGames && window.CrazyGames.SDK) ? window.CrazyGames.SDK : null;
+  let cgReady = false;
+  let gameplayActive = false;
+  let gamesStarted = 0;
+  const pauseReasons = new Set();
+  let systemPaused = false;
+  let muted = Boolean(save.muted);
+
+  function setPause(reason, on) {
+    if (on) pauseReasons.add(reason);
+    else pauseReasons.delete(reason);
+    systemPaused = pauseReasons.size > 0;
+    if (audio) {
+      if (systemPaused && audio.context.state === "running") audio.context.suspend();
+      else if (!systemPaused && audio.context.state === "suspended") audio.context.resume();
+    }
+  }
+
+  function applyMuteToAudio() {
+    if (audio) audio.master.gain.value = muted ? 0 : 0.12;
+  }
+
+  function setMuted(value) {
+    muted = value;
+    save.muted = value;
+    persist();
+    applyMuteToAudio();
+    if (el.muteBtn) {
+      el.muteBtn.textContent = muted ? "🔇" : "🔊";
+      el.muteBtn.classList.toggle("is-off", muted);
+    }
+  }
+
+  async function initCrazySDK() {
+    if (!CG) return;
+    try {
+      await CG.init();
+      cgReady = true;
+      try { CG.game.loadingStop(); } catch (err) { /* optional */ }
+    } catch (err) {
+      console.warn("CrazyGames SDK indisponivel", err);
+    }
+  }
+
+  function cgGameplayStart() {
+    try {
+      if (cgReady && !gameplayActive) {
+        CG.game.gameplayStart();
+        gameplayActive = true;
+      }
+    } catch (err) { /* noop */ }
+  }
+
+  function cgGameplayStop() {
+    try {
+      if (cgReady && gameplayActive) {
+        CG.game.gameplayStop();
+        gameplayActive = false;
+      }
+    } catch (err) { /* noop */ }
+  }
+
+  function cgHappytime() {
+    try { if (cgReady) CG.game.happytime(); } catch (err) { /* noop */ }
+  }
+
+  function requestMidgameAd(done) {
+    if (!cgReady) { done(); return; }
+    let settled = false;
+    let started = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      done();
+    };
+    try {
+      CG.ad.requestAd("midgame", {
+        adStarted: () => { started = true; setPause("ad", true); },
+        adFinished: () => { setPause("ad", false); finish(); },
+        adError: () => { setPause("ad", false); finish(); }
+      });
+    } catch (err) {
+      finish();
+      return;
+    }
+    setTimeout(() => { if (!started) finish(); }, 6000);
+  }
+
+  function beginGame() {
+    if (gamesStarted > 0) requestMidgameAd(startGame);
+    else startGame();
+  }
+
   function loadSave() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
@@ -250,7 +349,8 @@
           upgrades: parsed.upgrades || {},
           selectedChar: parsed.selectedChar || "arcano",
           selectedMap: parsed.selectedMap || "green",
-          bestTime: Number(parsed.bestTime || 0)
+          bestTime: Number(parsed.bestTime || 0),
+          muted: Boolean(parsed.muted)
         };
       }
     } catch (err) {
@@ -264,7 +364,8 @@
       upgrades: {},
       selectedChar: "arcano",
       selectedMap: "green",
-      bestTime: 0
+      bestTime: 0,
+      muted: false
     };
   }
 
@@ -418,7 +519,7 @@
     if (!AudioContext) return;
     const context = new AudioContext();
     const master = context.createGain();
-    master.gain.value = 0.12;
+    master.gain.value = muted ? 0 : 0.12;
     master.connect(context.destination);
     audio = {
       context,
@@ -483,17 +584,22 @@
 
   function renderMenu() {
     el.menu.classList.remove("is-hidden");
+    el.shopScreen.classList.add("is-hidden");
     el.hud.classList.add("is-hidden");
+    el.sysBtns.classList.add("is-hidden");
     el.levelScreen.classList.add("is-hidden");
     el.endScreen.classList.add("is-hidden");
-    el.returningPanel.classList.toggle("is-hidden", !save.hasPlayed);
+    el.returningPanel.classList.remove("is-hidden");
     el.manaText.textContent = String(Math.floor(save.mana || 0));
 
     el.charGrid.innerHTML = "";
     for (const character of CHARACTERS) {
       const button = document.createElement("button");
-      button.className = `choiceCard${character.id === selectedChar ? " is-selected" : ""}`;
-      button.innerHTML = `<b>${character.name}</b><small>${character.passive}: ${character.desc}</small>`;
+      button.className = `characterCard${character.id === selectedChar ? " is-selected" : ""}`;
+      button.innerHTML = `
+        <span class="choiceSprite" style="background-image:url('assets/sprites/character_${character.id}_idle.png')"></span>
+        <span class="characterText"><b>${character.name}</b><small>${character.passive}: ${character.desc}</small></span>
+      `;
       button.addEventListener("click", () => {
         selectedChar = character.id;
         persist();
@@ -517,7 +623,10 @@
       });
       el.mapGrid.appendChild(button);
     });
+  }
 
+  function renderShop() {
+    el.manaText.textContent = String(Math.floor(save.mana || 0));
     el.shopGrid.innerHTML = "";
     for (const item of SHOP_ITEMS) {
       const owned = item.kind === "weapon" ? Boolean(save.premium[item.id]) : Number(save.upgrades[item.id] || 0) > 0;
@@ -536,10 +645,24 @@
         if (item.kind === "weapon") save.premium[item.id] = true;
         if (item.kind === "upgrade") save.upgrades[item.id] = level + 1;
         persist();
-        renderMenu();
+        renderShop();
       });
       el.shopGrid.appendChild(button);
     }
+  }
+
+  function openShop() {
+    el.menu.classList.add("is-hidden");
+    el.hud.classList.add("is-hidden");
+    el.sysBtns.classList.add("is-hidden");
+    el.levelScreen.classList.add("is-hidden");
+    el.endScreen.classList.add("is-hidden");
+    el.shopScreen.classList.remove("is-hidden");
+    renderShop();
+  }
+
+  function closeShop() {
+    renderMenu();
   }
 
   function startGame() {
@@ -563,7 +686,6 @@
       dt: 0,
       killCount: 0,
       gold: 0,
-      manaEarned: 0,
       boss1Spawned: false,
       boss1Defeated: false,
       boss2Spawned: false,
@@ -571,6 +693,7 @@
       spawnTimer: 0,
       calmTimer: 0,
       hitStop: 0,
+      hitStopCd: 0,
       shake: 0,
       toastTimer: 0,
       healBucket: 0,
@@ -612,9 +735,15 @@
 
     addWeapon(character.weapon);
     el.menu.classList.add("is-hidden");
+    el.shopScreen.classList.add("is-hidden");
     el.endScreen.classList.add("is-hidden");
     el.levelScreen.classList.add("is-hidden");
     el.hud.classList.remove("is-hidden");
+    el.sysBtns.classList.remove("is-hidden");
+    if (el.pauseBtn) el.pauseBtn.textContent = "II";
+    gamesStarted += 1;
+    cgGameplayStop();
+    cgGameplayStart();
 
     for (let i = 0; i < 18; i += 1) {
       const type = i % 3 === 0 ? "goblin" : i % 5 === 0 ? "bat" : "slime";
@@ -627,8 +756,9 @@
     if (!game || mode === "ended") return;
     mode = "ended";
     const seconds = Math.floor(game.t);
-    const mana = Math.floor(game.killCount * 0.5 + seconds * 0.1 + game.player.level * 2 + (won ? 30 : 0));
-    game.manaEarned = mana;
+    const baseMana = Math.floor(game.killCount * 0.5 + seconds * 0.1 + game.player.level * 2 + (won ? 30 : 0));
+    const goldMana = Math.floor(game.gold * 0.25);
+    const mana = baseMana + goldMana;
     save.mana += mana;
     save.bestTime = Math.max(save.bestTime || 0, seconds);
     if (won) {
@@ -639,7 +769,10 @@
     }
     persist();
 
+    cgGameplayStop();
     el.hud.classList.add("is-hidden");
+    el.sysBtns.classList.add("is-hidden");
+    el.levelScreen.classList.add("is-hidden");
     el.endScreen.classList.remove("is-hidden");
     el.endEyebrow.textContent = won ? "Vitoria" : "Run encerrada";
     el.endTitle.textContent = won ? "A praga recuou" : "A horda venceu";
@@ -647,6 +780,7 @@
       ["Tempo", formatTime(seconds)],
       ["Abates", String(game.killCount)],
       ["Level", String(game.player.level)],
+      ["Ouro", `${game.gold} -> +${goldMana} mana`],
       ["Mana", `+${mana}`]
     ].map(([label, value]) => `<div><span>${label}</span>${value}</div>`).join("");
     if (audio) {
@@ -668,7 +802,7 @@
   function upgradeWeapon(id) {
     const current = game.player.weapons[id];
     if (current) {
-      current.level = Math.min(8, current.level + 1);
+      current.level = Math.min(25, current.level + 1);
       if (id === "shadow" && current.level >= 8) game.player.minionsWanted = 2;
     } else {
       addWeapon(id);
@@ -756,6 +890,7 @@
   function updateGame(dt) {
     if (!game) return;
 
+    game.hitStopCd = Math.max(0, game.hitStopCd - dt);
     if (game.hitStop > 0) {
       game.hitStop -= dt;
       dt *= 0.15;
@@ -827,12 +962,18 @@
     const t = game.t;
     const bossAlive = game.enemies.some((e) => e.boss);
     if (bossAlive) return { minimum: game.boss2Spawned ? 30 : 25, frequency: 0.8 };
-    if (t < 60) return { minimum: 24, frequency: 0.58 };
-    if (t < 120) return { minimum: 34, frequency: 0.66 };
-    if (t < 180) return { minimum: 44, frequency: 0.62 };
-    if (t < 270) return { minimum: 52, frequency: 0.54 };
-    if (t < 360) return { minimum: 68, frequency: 0.46 };
-    return { minimum: 30, frequency: 0.8 };
+    let base;
+    if (t < 60) base = { minimum: 24, frequency: 0.58 };
+    else if (t < 120) base = { minimum: 34, frequency: 0.66 };
+    else if (t < 180) base = { minimum: 44, frequency: 0.62 };
+    else if (t < 270) base = { minimum: 52, frequency: 0.54 };
+    else if (t < 360) base = { minimum: 68, frequency: 0.46 };
+    else base = { minimum: 30, frequency: 0.8 };
+    if (game.boss1Defeated) {
+      base.minimum = Math.round(base.minimum * 1.5);
+      base.frequency *= 0.7;
+    }
+    return base;
   }
 
   function spawnPool() {
@@ -940,7 +1081,7 @@
     game.boss1Spawned = true;
     const p = game.player;
     const angle = Math.random() * TAU;
-    const hp = 900 * game.map.hpMult;
+    const hp = 9000 * game.map.hpMult;
     game.enemies.push({
       id: Math.random(),
       boss: true,
@@ -981,7 +1122,7 @@
     game.boss2Spawned = true;
     const p = game.player;
     const angle = Math.random() * TAU;
-    const hp = 1800 * game.map.hpMult;
+    const hp = 18000 * game.map.hpMult;
     game.enemies.push({
       id: Math.random(),
       boss: true,
@@ -1078,7 +1219,7 @@
     const dy = p.y - enemy.y;
     const n = normalize(dx, dy);
     let speed = enemy.speed;
-    if (enemy.slow > 0) speed *= 0.55;
+    speed *= slowMultiplier(enemy);
     if (enemy.kind === "golem" && dx * dx + dy * dy < 210 * 210) speed *= 1.85;
     if (enemy.kind === "bat") {
       const side = Math.sin(game.t * 7 + enemy.phase) * 0.58;
@@ -1117,6 +1258,7 @@
     } else if (enemy.state === "charge") {
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
+      if (Math.abs(enemy.vx) > 1) enemy.faceX = enemy.vx < 0 ? -1 : 1;
       enemy.stateTimer -= dt;
       if (enemy.stateTimer <= 0) {
         enemy.vx = 0;
@@ -1214,8 +1356,14 @@
 
   function moveToward(entity, x, y, speed, dt) {
     const n = normalize(x - entity.x, y - entity.y);
-    entity.x += n.x * speed * dt;
-    entity.y += n.y * speed * dt;
+    const slow = slowMultiplier(entity);
+    entity.x += n.x * speed * slow * dt;
+    entity.y += n.y * speed * slow * dt;
+    if (Math.abs(n.x) > 0.05) entity.faceX = n.x < 0 ? -1 : 1;
+  }
+
+  function slowMultiplier(entity) {
+    return entity.slow > 0 ? 0.55 : 1;
   }
 
   function radialBossShots(enemy, count, speed, damage, gapEvery = 0) {
@@ -1268,6 +1416,7 @@
     let count = projectileCount(level);
     if (id === "bow") count += Math.floor(level / 3);
     if (id === "arcane" && level >= 5) count += 2;
+    count = Math.min(count, 10);
     const spread = count <= 1 ? 0 : Math.min(0.75, 0.14 * (count - 1));
 
     for (let i = 0; i < count; i += 1) {
@@ -1362,7 +1511,6 @@
         x: p.x + Math.cos(angle) * 42,
         y: p.y + Math.sin(angle) * 42,
         r: 12,
-        hp: 40 + p.level * 8,
         timer: rand(0.1, 0.3),
         phase: Math.random() * TAU
       });
@@ -1550,10 +1698,23 @@
         addParticle(enemy.x, enemy.y, opts.color || enemy.color, rand(1.5, 3.2), rand(60, 170), a, rand(0.16, 0.32));
       }
       if (!opts.noAudio && audio) audio.hit();
-      if (!opts.noHitStop && (opts.crit || final > 18)) game.hitStop = Math.max(game.hitStop, 0.06);
+      if (!opts.noHitStop && (opts.crit || final > 18) && game.hitStopCd <= 0) {
+        game.hitStop = Math.max(game.hitStop, 0.06);
+        game.hitStopCd = 0.34;
+      }
     }
+    maybeApplySlow(enemy, opts);
     if (enemy.hp <= 0) {
       killEnemy(enemy);
+    }
+  }
+
+  function maybeApplySlow(enemy, opts) {
+    const frost = toolLevel("frost");
+    if (!frost || opts.dot || enemy.dead || enemy.hp <= 0) return;
+    const chance = 0.16 + frost * 0.07;
+    if (Math.random() < chance) {
+      enemy.slow = Math.max(enemy.slow, 1.1 + frost * 0.25);
     }
   }
 
@@ -1587,6 +1748,7 @@
       game.boss1Defeated = true;
       game.calmTimer = 6;
       showToast("Boss derrotado", 2);
+      cgHappytime();
     }
     if (enemy.bossType === "reaper") {
       game.victory = true;
@@ -1685,6 +1847,7 @@
       if (d2 < (p.r + gold.r + 6) ** 2) {
         game.gold += gold.value;
         gold.dead = true;
+        addText(gold.x, gold.y - 10, `+${gold.value}`, "#ffd166", 0.86);
         if (audio) audio.pickup();
       }
     }
@@ -1747,7 +1910,7 @@
     const p = game.player;
     p.xp -= p.nextXp;
     p.level += 1;
-    p.nextXp = 5 + p.level * 4;
+    p.nextXp = Math.round(5 + p.level * 4 + p.level * p.level * 1.1);
     p.maxHp += 1.4;
     p.hp = Math.min(p.maxHp, p.hp + 7);
     mode = "levelup";
@@ -1766,7 +1929,7 @@
   }
 
   function pickRarity() {
-    const luck = toolLevel("luck") || 0;
+    const luck = (toolLevel("luck") || 0) + Number(save.upgrades.luck || 0);
     const list = RARITIES.map((r) => ({
       ...r,
       weight: r.weight + (r.id === "rare" ? luck * 4 : r.id === "epic" ? luck * 2 : r.id === "legendary" ? luck : 0)
@@ -1784,7 +1947,7 @@
 
     const candidates = [];
     for (const id of ownedWeapons) {
-      if (weaponLevel(id) < 8) candidates.push({ kind: "weapon", id, weight: 44 });
+      if (weaponLevel(id) < 25) candidates.push({ kind: "weapon", id, weight: 44 });
     }
     if (openWeaponSlots) {
       for (const id of weaponPool) {
@@ -1815,7 +1978,7 @@
     if (candidate.kind === "weapon") {
       const def = WEAPONS[candidate.id];
       const owned = weaponLevel(candidate.id);
-      const next = owned ? Math.min(8, owned + 1) : 1;
+      const next = owned ? Math.min(25, owned + 1) : 1;
       return {
         ...candidate,
         rarity,
@@ -2217,10 +2380,12 @@
     if (ready(enemySheet)) {
       const frame = Math.floor(game.t * 8 + enemy.phase) % 2;
       const drawSize = enemy.kind === "golem" ? 62 : enemy.kind === "bat" ? 52 : enemy.kind === "bomber" ? 50 : enemy.kind === "slime" ? 50 : 48;
+      if (game.player.x < enemy.x) ctx.scale(-1, 1);
       ctx.filter = enemy.hitFlash > 0 ? "brightness(3.2) saturate(0)" : "none";
       spriteFrame(enemySheet, 80, 80, frame, -drawSize / 2, -drawSize / 2 - 5, drawSize, drawSize);
       ctx.filter = "none";
       drawBurnOverlay(enemy);
+      drawSlowOverlay(enemy);
       drawEnemyHp(enemy);
       ctx.restore();
       return;
@@ -2306,6 +2471,7 @@
       drawEyes(-4, 0, 4, 0);
     }
     drawBurnOverlay(enemy);
+    drawSlowOverlay(enemy);
     drawEnemyHp(enemy);
     ctx.restore();
   }
@@ -2326,10 +2492,12 @@
       const animSpeed = enemy.state && enemy.state.startsWith("wind") ? 12 : 7;
       const frame = Math.floor(game.t * animSpeed + enemy.phase) % 4;
       const drawSize = enemy.bossType === "reaper" ? 158 : 176;
+      if (enemy.faceX < 0) ctx.scale(-1, 1);
       ctx.filter = enemy.hitFlash > 0 ? "brightness(3.2) saturate(0)" : "none";
       spriteFrame(bossSheet, 160, 160, frame, -drawSize / 2, -drawSize / 2 - 14, drawSize, drawSize);
       ctx.filter = "none";
       drawBurnOverlay(enemy);
+      drawSlowOverlay(enemy);
       drawEnemyHp(enemy, true);
       ctx.restore();
       return;
@@ -2369,6 +2537,7 @@
       drawEyes(-12, -16, 12, -16, 5);
     }
     drawBurnOverlay(enemy);
+    drawSlowOverlay(enemy);
     drawEnemyHp(enemy, true);
     ctx.restore();
   }
@@ -2389,6 +2558,18 @@
     ctx.beginPath();
     ctx.arc(0, 0, entity.r * 0.95, 0, TAU);
     ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSlowOverlay(entity) {
+    if (entity.slow <= 0 || entity.hitFlash > 0) return;
+    const pulse = 0.18 + Math.sin(game.t * 10 + entity.phase) * 0.04;
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = "#74d5ff";
+    ctx.lineWidth = entity.boss ? 5 : 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, entity.r * 1.18, 0, TAU);
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
 
@@ -2445,9 +2626,10 @@
     const characterSheet = sprites.characters[sheetKey];
     if (ready(characterSheet)) {
       const frame = p.walking ? Math.floor(game.t * 10) % 4 : 0;
-      const sourceSize = char.id === "arcano" ? 96 : 48;
-      const drawSize = char.id === "arcano" ? 68 : 56;
-      const yOffset = char.id === "arcano" ? -46 : -30;
+      const sourceSize = 96;
+      const drawSize = 68;
+      const yOffset = -46;
+      if (p.lastDirX < 0) ctx.scale(-1, 1);
       ctx.filter = flash ? "brightness(3.2) saturate(0)" : "none";
       spriteFrame(characterSheet, sourceSize, sourceSize, frame, -drawSize / 2, yOffset, drawSize, drawSize);
       ctx.filter = "none";
@@ -2575,12 +2757,26 @@
     ctx.restore();
   }
 
+  function togglePause() {
+    if (!game || (mode !== "playing" && mode !== "paused")) return;
+    if (mode === "playing") {
+      mode = "paused";
+      showToast("Pausado", 10);
+    } else {
+      mode = "playing";
+      showToast("Voltando", 0.7);
+    }
+    if (el.pauseBtn) el.pauseBtn.textContent = mode === "paused" ? ">" : "II";
+  }
+
   function frame(now) {
     const raw = (now - lastTime) / 1000;
     lastTime = now;
     const dt = clamp(raw, 0, 0.033);
-    if (mode === "playing") updateGame(dt);
-    if (mode === "levelup") updateLevelScreen(dt);
+    if (!systemPaused) {
+      if (mode === "playing") updateGame(dt);
+      if (mode === "levelup") updateLevelScreen(dt);
+    }
     draw();
     requestAnimationFrame(frame);
   }
@@ -2594,13 +2790,7 @@
       if (key === "3") applyChoice(2);
     }
     if ((key === "p" || key === "escape") && game) {
-      if (mode === "playing") {
-        mode = "paused";
-        showToast("Pausado", 10);
-      } else if (mode === "paused") {
-        mode = "playing";
-        showToast("Voltando", 0.7);
-      }
+      togglePause();
     }
     if (key === "r" && (mode === "ended" || mode === "paused")) startGame();
   }
@@ -2660,45 +2850,31 @@
   window.addEventListener("resize", resize);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  document.addEventListener("visibilitychange", () => setPause("hidden", document.hidden));
   canvas.addEventListener("pointerdown", canvasPointerDown);
   canvas.addEventListener("pointermove", canvasPointerMove);
   canvas.addEventListener("pointerup", canvasPointerUp);
   canvas.addEventListener("pointercancel", canvasPointerUp);
-  el.playButton.addEventListener("click", startGame);
-  el.againButton.addEventListener("click", startGame);
+  el.playButton.addEventListener("click", beginGame);
+  el.shopOpenButton.addEventListener("click", openShop);
+  el.shopBackButton.addEventListener("click", closeShop);
+  el.againButton.addEventListener("click", beginGame);
   el.menuButton.addEventListener("click", () => {
+    cgGameplayStop();
     mode = "menu";
     game = null;
     renderMenu();
   });
+  el.pauseBtn.addEventListener("click", togglePause);
+  el.muteBtn.addEventListener("click", () => {
+    resumeAudio();
+    setMuted(!muted);
+  });
 
+  setMuted(muted);
   loadSprites();
   resize();
   renderMenu();
-  if (typeof URLSearchParams !== "undefined" && window.location) {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("autoplay") === "1") {
-      const mapParam = params.get("map");
-      if (MAPS.some((m) => m.id === mapParam)) {
-        selectedMap = mapParam;
-        save.unlockedMaps = MAPS.length;
-      }
-      setTimeout(() => {
-        startGame();
-        if (params.get("shot") === "1") {
-          keys.add("d");
-          keys.add("s");
-          for (let i = 0; i < 480; i += 1) {
-            if (mode === "levelup") applyChoice(0);
-            updateGame(1 / 60);
-          }
-          keys.delete("d");
-          keys.delete("s");
-          if (mode === "levelup") applyChoice(0);
-          updateHud();
-        }
-      }, 180);
-    }
-  }
+  initCrazySDK();
   requestAnimationFrame(frame);
 })();
