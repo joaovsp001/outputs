@@ -51,6 +51,14 @@
     { id: "legendary", name: "Lendario", color: "#ffb347", weight: 1, mult: 2.35 }
   ];
 
+  const RARITY_BONUS_PCT = {
+    common: 4,
+    uncommon: 6,
+    rare: 8,
+    epic: 11,
+    legendary: 14
+  };
+
   const CHARACTERS = [
     {
       id: "arcano",
@@ -163,9 +171,9 @@
       reaper: "assets/sprites/generated_boss_reaper.png"
     },
     maps: {
-      green: "assets/maps/generated_map_green.jpg",
-      waste: "assets/maps/generated_map_waste.jpg",
-      fire: "assets/maps/generated_map_fire.jpg"
+      green: "assets/maps/generated_map_green.webp",
+      waste: "assets/maps/generated_map_waste.webp",
+      fire: "assets/maps/generated_map_fire.webp"
     },
     projectiles: "assets/sprites/projectiles.png",
     drops: "assets/sprites/drops.png"
@@ -181,12 +189,12 @@
   };
 
   const ENEMY_TYPES = {
-    slime: { name: "Slime", hp: 8, speed: 80, dmg: 8, xp: 2, r: 12, color: "#65c96d", kind: "slime" },
-    goblin: { name: "Goblin", hp: 6, speed: 120, dmg: 7, xp: 2, r: 11, color: "#80b950", kind: "goblin" },
-    bat: { name: "Morcego", hp: 4, speed: 160, dmg: 6, xp: 3, r: 9, color: "#8b72d9", kind: "bat" },
-    skeleton: { name: "Esqueleto", hp: 10, speed: 95, dmg: 9, xp: 3, r: 11, color: "#f2ead5", kind: "skeleton" },
-    golem: { name: "Golem", hp: 90, speed: 50, dmg: 16, xp: 10, r: 18, color: "#a89d8d", kind: "golem" },
-    bomber: { name: "Bombardeiro", hp: 10, speed: 100, dmg: 20, xp: 4, r: 10, color: "#f28b47", kind: "bomber" }
+    slime: { name: "Slime", hp: 12, speed: 80, dmg: 8, xp: 2, r: 12, color: "#65c96d", kind: "slime" },
+    goblin: { name: "Goblin", hp: 11, speed: 120, dmg: 7, xp: 2, r: 11, color: "#80b950", kind: "goblin" },
+    bat: { name: "Morcego", hp: 8, speed: 160, dmg: 6, xp: 3, r: 9, color: "#8b72d9", kind: "bat" },
+    skeleton: { name: "Esqueleto", hp: 18, speed: 95, dmg: 9, xp: 3, r: 11, color: "#f2ead5", kind: "skeleton" },
+    golem: { name: "Golem", hp: 125, speed: 50, dmg: 16, xp: 10, r: 18, color: "#a89d8d", kind: "golem" },
+    bomber: { name: "Bombardeiro", hp: 18, speed: 100, dmg: 20, xp: 4, r: 10, color: "#f28b47", kind: "bomber" }
   };
 
   const WEAPONS = {
@@ -219,6 +227,44 @@
     { id: "speed", kind: "upgrade", cost: 85, name: "+Movimento", desc: "Mais velocidade permanente." },
     { id: "luck", kind: "upgrade", cost: 120, name: "+Sorte", desc: "Raridades melhores aparecem com mais frequencia." }
   ];
+
+  const UPGRADE_ICON_INDEX = {
+    bolt: 0,
+    sword: 1,
+    scythe: 2,
+    bow: 3,
+    fire: 4,
+    aura: 5,
+    ricochet: 6,
+    shadow: 7,
+    force: 8,
+    haste: 9,
+    crit: 10,
+    multishot: 11,
+    armor: 12,
+    frost: 13,
+    luck: 14,
+    heal: 15
+  };
+
+  const UPGRADE_ICON_BY_ID = {
+    arcane: "bolt",
+    sword: "sword",
+    scythe: "scythe",
+    bow: "bow",
+    fire: "fire",
+    aura: "aura",
+    ricochet: "ricochet",
+    shadow: "shadow",
+    force: "force",
+    haste: "haste",
+    crit: "crit",
+    multishot: "multishot",
+    armor: "armor",
+    frost: "frost",
+    luck: "luck",
+    heal: "heal"
+  };
 
   const keys = new Set();
   const pointer = {
@@ -400,11 +446,16 @@
     for (const [key, src] of Object.entries(SPRITE_PATHS.bosses)) {
       sprites.bosses[key] = loadSprite(src);
     }
-    for (const [key, src] of Object.entries(SPRITE_PATHS.maps)) {
-      sprites.maps[key] = loadSprite(src);
-    }
+    // Mapas sao texturas grandes (~1-1.5MB cada). Carregamos sob demanda apenas
+    // o mapa em uso, em vez de baixar os tres no boot. Ver ensureMapLoaded().
     sprites.projectiles = loadSprite(SPRITE_PATHS.projectiles);
     sprites.drops = loadSprite(SPRITE_PATHS.drops);
+  }
+
+  function ensureMapLoaded(tileKey) {
+    if (!tileKey || sprites.maps[tileKey]) return;
+    const src = SPRITE_PATHS.maps[tileKey];
+    if (src) sprites.maps[tileKey] = loadSprite(src);
   }
 
   function ready(image) {
@@ -592,6 +643,11 @@
     el.returningPanel.classList.remove("is-hidden");
     el.manaText.textContent = String(Math.floor(save.mana || 0));
 
+    // Textura do fundo do menu (sempre verde) + preload do mapa selecionado,
+    // para o "Jogar" comecar com o chao ja carregado.
+    ensureMapLoaded(MAPS[0].tileKey);
+    ensureMapLoaded(currentMap().tileKey);
+
     el.charGrid.innerHTML = "";
     for (const character of CHARACTERS) {
       const button = document.createElement("button");
@@ -672,6 +728,7 @@
 
     const character = currentCharacter();
     const map = currentMap();
+    ensureMapLoaded(map.tileKey);
     const hpUpgrade = Number(save.upgrades.hp || 0);
     const damageUpgrade = Number(save.upgrades.damage || 0);
     const speedUpgrade = Number(save.upgrades.speed || 0);
@@ -701,7 +758,7 @@
       player: {
         x: 0,
         y: 0,
-        r: 14,
+        r: 17,
         hp: maxHp,
         maxHp,
         speed: character.speed + speedUpgrade * 7,
@@ -724,6 +781,7 @@
       gems: [],
       goldDrops: [],
       particles: [],
+      deaths: [],
       texts: [],
       slashes: [],
       trails: [],
@@ -831,7 +889,7 @@
 
   function getDamageMult(enemy) {
     const p = game.player;
-    let mult = 1 + p.damageUpgrade + toolLevel("force") * 0.15;
+    let mult = 1 + p.damageUpgrade + toolLevel("force") * 0.08;
     if (game.character.id === "arcano") {
       const alive = game.projectiles.filter((proj) => proj.fromPlayer).length;
       mult *= 1 + Math.min(0.72, alive * 0.03);
@@ -846,15 +904,15 @@
   }
 
   function critInfo() {
-    let chance = 0.05 + toolLevel("crit") * 0.1;
-    let mult = 1.5 + toolLevel("crit") * 0.25;
+    let chance = 0.05 + toolLevel("crit") * 0.055;
+    let mult = 1.5 + toolLevel("crit") * 0.14;
     if (game.character.id === "cacadora") chance += 0.2;
     const crit = Math.random() < chance;
     return { crit, mult: crit ? mult : 1 };
   }
 
   function weaponDamage(id, level, enemy) {
-    const base = WEAPONS[id].dmg * (1 + (level - 1) * 0.18);
+    const base = WEAPONS[id].dmg * (1 + (level - 1) * 0.1);
     const crit = critInfo();
     return {
       value: base * getDamageMult(enemy) * crit.mult,
@@ -864,12 +922,12 @@
 
   function weaponCooldown(id, level) {
     const def = WEAPONS[id];
-    const haste = clamp(1 - toolLevel("haste") * 0.08 - (level - 1) * 0.025, 0.38, 1);
+    const haste = clamp(1 - toolLevel("haste") * 0.045 - (level - 1) * 0.018, 0.48, 1);
     return def.cd * haste;
   }
 
   function projectileCount(level) {
-    return 1 + Math.floor((level - 1) / 4) + toolLevel("multishot");
+    return 1 + Math.floor((level - 1) / 4) + Math.floor((toolLevel("multishot") + 1) / 2);
   }
 
   function getInputVector() {
@@ -1683,12 +1741,11 @@
     enemy.hp -= final;
     enemy.hitFlash = 1;
     enemy.squash = 1;
-    if (opts.knock !== 0) {
+    if (opts.knock && !enemy.boss) {
       const source = opts.x !== undefined ? opts : game.player;
       const n = normalize(enemy.x - source.x, enemy.y - source.y);
-      const knock = opts.knock || (enemy.boss ? 35 : 170);
-      enemy.knockX += n.x * knock;
-      enemy.knockY += n.y * knock;
+      enemy.knockX += n.x * opts.knock;
+      enemy.knockY += n.y * opts.knock;
     }
     if (!opts.dot) {
       const color = opts.crit ? "#ffd166" : opts.color || "#fffdf6";
@@ -1712,9 +1769,9 @@
   function maybeApplySlow(enemy, opts) {
     const frost = toolLevel("frost");
     if (!frost || opts.dot || enemy.dead || enemy.hp <= 0) return;
-    const chance = 0.16 + frost * 0.07;
+    const chance = 0.12 + frost * 0.045;
     if (Math.random() < chance) {
-      enemy.slow = Math.max(enemy.slow, 1.1 + frost * 0.25);
+      enemy.slow = Math.max(enemy.slow, 0.85 + frost * 0.16);
     }
   }
 
@@ -1722,9 +1779,8 @@
     if (enemy.dead) return;
     enemy.dead = true;
     game.killCount += enemy.boss ? 0 : 1;
-    for (let i = 0; i < (enemy.boss ? 34 : 9); i += 1) {
-      addParticle(enemy.x, enemy.y, enemy.color, rand(2, enemy.boss ? 6 : 4), rand(80, enemy.boss ? 330 : 210), Math.random() * TAU, rand(0.22, 0.62));
-    }
+    spawnDeath(enemy);
+    spawnAsh(enemy);
     game.shake = Math.max(game.shake, enemy.boss ? 14 : enemy.kind === "golem" ? 4 : 1.7);
     if (audio) {
       if (enemy.boss) audio.boss();
@@ -1763,7 +1819,7 @@
     const late = lerp(1, 2.5, t * t * (3 - 2 * t));
     const earlySafety = game.t < 60 ? lerp(0.54, 1, game.t / 60) : 1;
     let dmg = amount * game.map.dmgMult * late * earlySafety;
-    dmg *= 1 - Math.min(0.6, toolLevel("armor") * 0.08);
+    dmg *= 1 - Math.min(0.38, toolLevel("armor") * 0.055);
     if (game.character.id === "cavalheiro") dmg *= 0.85;
     p.hp -= dmg;
     p.invuln = 0.26;
@@ -1810,21 +1866,24 @@
 
   function updateDrops(dt) {
     const p = game.player;
-    const magnet = 74 + p.level * 2;
+    const magnet = 118 + p.level * 3;
     for (const gem of game.gems) {
       const dx = p.x - gem.x;
       const dy = p.y - gem.y;
       const d2 = dx * dx + dy * dy;
       if (d2 < magnet * magnet) {
         const n = normalize(dx, dy);
-        gem.vx += n.x * 620 * dt;
-        gem.vy += n.y * 620 * dt;
+        const d = Math.sqrt(d2);
+        const pullSpeed = clamp(460 + (magnet - d) * 6.5, 460, 1120);
+        const pull = clamp(dt * 10, 0, 1);
+        gem.vx = lerp(gem.vx, n.x * pullSpeed, pull);
+        gem.vy = lerp(gem.vy, n.y * pullSpeed, pull);
       }
       gem.x += gem.vx * dt;
       gem.y += gem.vy * dt;
       gem.vx *= Math.pow(0.04, dt);
       gem.vy *= Math.pow(0.04, dt);
-      if (d2 < (p.r + gem.r + 6) ** 2) {
+      if (distSq(p, gem) < (p.r + gem.r + 12) ** 2) {
         p.xp += gem.value;
         gem.dead = true;
         addParticle(gem.x, gem.y, "#62b5ff", 3, 120, -Math.PI / 2, 0.25);
@@ -1835,16 +1894,19 @@
       const dx = p.x - gold.x;
       const dy = p.y - gold.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 < (magnet + 10) ** 2) {
+      if (d2 < (magnet + 24) ** 2) {
         const n = normalize(dx, dy);
-        gold.vx += n.x * 520 * dt;
-        gold.vy += n.y * 520 * dt;
+        const d = Math.sqrt(d2);
+        const pullSpeed = clamp(380 + (magnet + 24 - d) * 5.2, 380, 920);
+        const pull = clamp(dt * 8, 0, 1);
+        gold.vx = lerp(gold.vx, n.x * pullSpeed, pull);
+        gold.vy = lerp(gold.vy, n.y * pullSpeed, pull);
       }
       gold.x += gold.vx * dt;
       gold.y += gold.vy * dt;
       gold.vx *= Math.pow(0.04, dt);
       gold.vy *= Math.pow(0.04, dt);
-      if (d2 < (p.r + gold.r + 6) ** 2) {
+      if (distSq(p, gold) < (p.r + gold.r + 12) ** 2) {
         game.gold += gold.value;
         gold.dead = true;
         addText(gold.x, gold.y - 10, `+${gold.value}`, "#ffd166", 0.86);
@@ -1858,10 +1920,27 @@
   function updateEffects(dt) {
     for (const p of game.particles) {
       p.life -= dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= Math.pow(0.02, dt);
-      p.vy *= Math.pow(0.02, dt);
+      if (p.grav) {
+        p.vy += p.grav * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (p.floorY != null && p.y >= p.floorY) {
+          p.y = p.floorY;
+          p.vy = 0;
+          p.vx *= Math.pow(0.0002, dt); // pousou: para de deslizar
+        } else {
+          p.vx *= Math.pow(0.4, dt); // arrasto leve no ar
+        }
+      } else {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(0.02, dt);
+        p.vy *= Math.pow(0.02, dt);
+      }
+    }
+    if (game.deaths) {
+      for (const d of game.deaths) d.life -= dt;
+      game.deaths = game.deaths.filter((d) => d.life > 0);
     }
     for (const text of game.texts) {
       text.life -= dt;
@@ -1892,6 +1971,62 @@
       max: life,
       rot: Math.random() * TAU
     });
+  }
+
+  // Snapshot do sprite no instante da morte para redesenha-lo em branco sumindo
+  // (o "vira po"). Vida curtissima (~0.16s) e custo de 1 drawImage por morte.
+  function spawnDeath(enemy) {
+    let sheet;
+    let frame;
+    let drawSize;
+    let sourceSize;
+    let yOff;
+    let flip;
+    if (enemy.boss) {
+      sheet = sprites.bosses[enemy.bossType];
+      const animSpeed = enemy.state && enemy.state.startsWith("wind") ? 12 : 7;
+      frame = Math.floor(game.t * animSpeed + enemy.phase) % 4;
+      drawSize = enemy.bossType === "reaper" ? 158 : 176;
+      sourceSize = 160;
+      yOff = -drawSize / 2 - 14;
+      flip = enemy.faceX < 0;
+    } else {
+      sheet = sprites.enemies[enemy.kind];
+      frame = Math.floor(game.t * 8 + enemy.phase) % 2;
+      drawSize = enemy.kind === "golem" ? 62 : enemy.kind === "bat" ? 52 : enemy.kind === "bomber" ? 50 : enemy.kind === "slime" ? 50 : 48;
+      sourceSize = 80;
+      yOff = -drawSize / 2 - 5;
+      flip = game.player.x < enemy.x;
+    }
+    if (!ready(sheet)) return; // sem sprite (formas vetoriais): so as cinzas
+    const life = enemy.boss ? 0.24 : 0.16;
+    game.deaths.push({ x: enemy.x, y: enemy.y, sheet, frame, drawSize, sourceSize, yOff, flip, life, max: life });
+  }
+
+  // Cinzas em cubo: sobem de leve, caem com gravidade e assentam no chao,
+  // desbotando. Reaproveita o array de particulas (sem custo extra de memoria).
+  function spawnAsh(enemy) {
+    const count = enemy.boss ? 14 : 6;
+    const feet = enemy.y + enemy.r;
+    for (let i = 0; i < count; i += 1) {
+      const ang = -Math.PI / 2 + rand(-0.9, 0.9);
+      const spd = rand(40, enemy.boss ? 170 : 115);
+      const life = rand(0.32, enemy.boss ? 0.7 : 0.6);
+      const color = i % 4 === 0 ? enemy.color : (i % 2 ? "#565656" : "#3d3d3d");
+      game.particles.push({
+        x: enemy.x + rand(-enemy.r * 0.5, enemy.r * 0.5),
+        y: enemy.y + rand(-enemy.r * 0.4, 0),
+        vx: Math.cos(ang) * spd * 0.45 + rand(-26, 26),
+        vy: Math.sin(ang) * spd,
+        color,
+        size: rand(1.5, enemy.boss ? 4 : 2.8),
+        life,
+        max: life,
+        rot: Math.random() * TAU,
+        grav: rand(440, 640),
+        floorY: feet + rand(-2, enemy.r * 0.4)
+      });
+    }
   }
 
   function addText(x, y, text, color, scale = 1) {
@@ -1932,9 +2067,17 @@
     const luck = (toolLevel("luck") || 0) + Number(save.upgrades.luck || 0);
     const list = RARITIES.map((r) => ({
       ...r,
-      weight: r.weight + (r.id === "rare" ? luck * 4 : r.id === "epic" ? luck * 2 : r.id === "legendary" ? luck : 0)
+      weight: r.weight + (r.id === "rare" ? luck * 2.5 : r.id === "epic" ? luck * 1.2 : r.id === "legendary" ? luck * 0.45 : 0)
     }));
     return weighted(list);
+  }
+
+  function rarityBonusPct(rarity) {
+    return RARITY_BONUS_PCT[rarity.id] || RARITY_BONUS_PCT.common;
+  }
+
+  function rarityHealAmount(rarity) {
+    return Math.round(14 * (1 + rarityBonusPct(rarity) / 100));
   }
 
   function buildChoices() {
@@ -1982,11 +2125,11 @@
       return {
         ...candidate,
         rarity,
+        icon: UPGRADE_ICON_BY_ID[candidate.id] || "bolt",
         title: owned ? `${def.name} Lv${next}` : def.name,
-        desc: owned ? `+${Math.round(18 * rarity.mult)}% de impacto` : "Nova arma automatica",
+        desc: owned ? `+${rarityBonusPct(rarity)}% de impacto` : "Nova arma automatica",
         apply() {
           upgradeWeapon(candidate.id);
-          if (rarity.id === "legendary") addTool("force");
         }
       };
     }
@@ -1995,21 +2138,23 @@
       return {
         ...candidate,
         rarity,
+        icon: UPGRADE_ICON_BY_ID[candidate.id] || candidate.id,
         title: `${def.name} Lv${toolLevel(candidate.id) + 1}`,
-        desc: `${def.desc} Bonus ${Math.round(rarity.mult * 100)}%.`,
+        desc: `${def.desc} Bonus ${rarityBonusPct(rarity)}%.`,
         apply() {
           addTool(candidate.id);
-          if (rarity.id === "epic" || rarity.id === "legendary") addTool(candidate.id);
         }
       };
     }
+    const healAmount = rarityHealAmount(rarity);
     return {
       ...candidate,
       rarity,
+      icon: "heal",
       title: "Cura",
-      desc: `Recupera ${Math.round(18 * rarity.mult)} HP agora.`,
+      desc: `Recupera ${healAmount} HP agora.`,
       apply() {
-        healPlayer(18 * rarity.mult);
+        healPlayer(healAmount);
       }
     };
   }
@@ -2019,8 +2164,18 @@
     game.choices.forEach((choice, index) => {
       const button = document.createElement("button");
       button.className = "upgradeCard";
-      button.style.background = choice.rarity.color;
-      button.innerHTML = `<strong>${choice.title}</strong><span>${choice.desc}</span><small>${index + 1} - ${choice.rarity.name}</small>`;
+      button.style.setProperty("--rarity-color", choice.rarity.color);
+      const iconIndex = UPGRADE_ICON_INDEX[choice.icon] ?? UPGRADE_ICON_INDEX.heal;
+      button.style.setProperty("--icon-x", `${(iconIndex % 4) * -64}px`);
+      button.style.setProperty("--icon-y", `${Math.floor(iconIndex / 4) * -64}px`);
+      button.innerHTML = `
+        <span class="upgradeTop">
+          <span class="upgradeIcon" aria-hidden="true"></span>
+          <strong>${choice.title}</strong>
+        </span>
+        <span class="upgradeDesc">${choice.desc}</span>
+        <small>${index + 1} - ${choice.rarity.name}</small>
+      `;
       button.addEventListener("click", () => applyChoice(index));
       el.cardGrid.appendChild(button);
     });
@@ -2081,7 +2236,9 @@
     drawTrails();
     drawSlashes();
     drawProjectiles();
+    drawShadows();
     drawEnemies();
+    drawDeaths();
     drawMinions();
     drawPlayer();
     drawEnemyProjectiles();
@@ -2583,6 +2740,43 @@
     ctx.fillRect(-w / 2, y, w * clamp(enemy.hp / enemy.maxHp, 0, 1), 6);
   }
 
+  function drawShadow(x, y, rx, ry, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#16241a";
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Sombras de contato no chao: fundamentam cada figura no ambiente e encolhem
+  // conforme o "bob" sobe, reforcando que estao pisando no solo (e nao flutuando).
+  function drawShadows() {
+    const p = game.player;
+    for (const enemy of game.enemies) {
+      if (enemy.dead) continue;
+      if (enemy.boss) {
+        const bob = Math.sin(game.t * 4 + enemy.phase) * 2;
+        const lift = clamp(1 - bob * 0.04, 0.82, 1.12);
+        drawShadow(enemy.x, enemy.y + enemy.r * 1.5, enemy.r * 1.3 * lift, enemy.r * 0.5 * lift, 0.3);
+      } else {
+        const bob = Math.sin(game.t * 8 + enemy.phase) * 1.5;
+        const lift = clamp(1 - bob * 0.05, 0.8, 1.15);
+        drawShadow(enemy.x, enemy.y + enemy.r + 6, enemy.r * 1.05 * lift, enemy.r * 0.44 * lift, 0.26);
+      }
+    }
+    if (game.minions) {
+      for (const minion of game.minions) {
+        const bob = Math.sin(game.t * 5 + minion.phase) * 2;
+        const lift = clamp(1 - bob * 0.05, 0.82, 1.12);
+        drawShadow(minion.x, minion.y + 16, 12 * lift, 5 * lift, 0.22);
+      }
+    }
+    const walkPulse = p.walking ? 1 + Math.sin(game.t * 20) * 0.06 : 1;
+    drawShadow(p.x, p.y + 22, 17 * walkPulse, 7 * walkPulse, 0.28);
+  }
+
   function drawMinions() {
     if (!game.minions) return;
     for (const minion of game.minions) {
@@ -2627,8 +2821,8 @@
     if (ready(characterSheet)) {
       const frame = p.walking ? Math.floor(game.t * 10) % 4 : 0;
       const sourceSize = 96;
-      const drawSize = 68;
-      const yOffset = -46;
+      const drawSize = 80;
+      const yOffset = -54;
       if (p.lastDirX < 0) ctx.scale(-1, 1);
       ctx.filter = flash ? "brightness(3.2) saturate(0)" : "none";
       spriteFrame(characterSheet, sourceSize, sourceSize, frame, -drawSize / 2, yOffset, drawSize, drawSize);
@@ -2693,6 +2887,23 @@
     }
     drawEyes(-5, -5, 5, -5, 3.2);
     ctx.restore();
+  }
+
+  function drawDeaths() {
+    if (!game.deaths || !game.deaths.length) return;
+    for (const d of game.deaths) {
+      const t = 1 - d.life / d.max; // 0 -> 1 ao longo da vida
+      ctx.save();
+      ctx.translate(d.x, d.y - t * 9); // sobe de leve enquanto some
+      ctx.globalAlpha = 1 - t;
+      const sc = 1 + t * 0.18;
+      ctx.scale(sc, sc);
+      if (d.flip) ctx.scale(-1, 1);
+      ctx.filter = "brightness(4) saturate(0)"; // estoura em branco
+      spriteFrame(d.sheet, d.sourceSize, d.sourceSize, d.frame, -d.drawSize / 2, d.yOff, d.drawSize, d.drawSize);
+      ctx.filter = "none";
+      ctx.restore();
+    }
   }
 
   function drawParticles() {
