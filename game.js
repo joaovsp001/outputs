@@ -3,6 +3,10 @@
 
   const TAU = Math.PI * 2;
   const SAVE_KEY = "praga-survivor-save-v1";
+  const ATTACK_SPEED_MULT = 1.2;
+  const HORDE_DENSITY_MULT = 1.4;
+  const BOSS_HORDE_DENSITY_MULT = 1.18;
+  const COMMON_XP_MULT = 0.72;
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
@@ -40,7 +44,12 @@
     menuButton: document.getElementById("menuButton"),
     sysBtns: document.getElementById("sysBtns"),
     pauseBtn: document.getElementById("pauseBtn"),
-    muteBtn: document.getElementById("muteBtn")
+    muteBtn: document.getElementById("muteBtn"),
+    pauseScreen: document.getElementById("pauseScreen"),
+    pauseResumeBtn: document.getElementById("pauseResumeBtn"),
+    pauseRestartBtn: document.getElementById("pauseRestartBtn"),
+    pauseMenuBtn: document.getElementById("pauseMenuBtn"),
+    pauseMuteToggle: document.getElementById("pauseMuteToggle")
   };
 
   const RARITIES = [
@@ -194,7 +203,8 @@
     bat: { name: "Morcego", hp: 8, speed: 160, dmg: 6, xp: 3, r: 9, color: "#8b72d9", kind: "bat" },
     skeleton: { name: "Esqueleto", hp: 18, speed: 95, dmg: 9, xp: 3, r: 11, color: "#f2ead5", kind: "skeleton" },
     golem: { name: "Golem", hp: 125, speed: 50, dmg: 16, xp: 10, r: 18, color: "#a89d8d", kind: "golem" },
-    bomber: { name: "Bombardeiro", hp: 18, speed: 100, dmg: 20, xp: 4, r: 10, color: "#f28b47", kind: "bomber" }
+    bomber: { name: "Bombardeiro", hp: 18, speed: 100, dmg: 20, xp: 4, r: 10, color: "#f28b47", kind: "bomber" },
+    totem: { name: "Totem da Praga", hp: 120, speed: 0, dmg: 0, xp: 0, r: 24, color: "#b985ff", kind: "totem" }
   };
 
   const WEAPONS = {
@@ -319,6 +329,9 @@
     if (el.muteBtn) {
       el.muteBtn.textContent = muted ? "🔇" : "🔊";
       el.muteBtn.classList.toggle("is-off", muted);
+      el.muteBtn.textContent = muted ? "Som off" : "Som";
+      el.muteBtn.setAttribute("aria-label", muted ? "Ativar som" : "Desativar som");
+      el.muteBtn.title = muted ? "Ativar som" : "Desativar som";
     }
   }
 
@@ -387,15 +400,37 @@
       const raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        const validCharIds = CHARACTERS.map(c => c.id);
+        const validMapIds = MAPS.map(m => m.id);
+
+        const mana = isFinite(Number(parsed.mana)) ? Math.max(0, Math.floor(Number(parsed.mana))) : 0;
+        const unlockedMaps = isFinite(Number(parsed.unlockedMaps))
+          ? Math.max(1, Math.min(MAPS.length, Math.floor(Number(parsed.unlockedMaps))))
+          : 1;
+        const bestTime = isFinite(Number(parsed.bestTime)) ? Math.max(0, Number(parsed.bestTime)) : 0;
+
+        const premium = {};
+        if (parsed.premium && typeof parsed.premium === "object" && !Array.isArray(parsed.premium)) {
+          for (const [k, v] of Object.entries(parsed.premium)) premium[k] = Boolean(v);
+        }
+
+        const upgrades = {};
+        if (parsed.upgrades && typeof parsed.upgrades === "object" && !Array.isArray(parsed.upgrades)) {
+          for (const [k, v] of Object.entries(parsed.upgrades)) {
+            const n = Math.floor(Number(v));
+            if (isFinite(n) && n >= 0) upgrades[k] = n;
+          }
+        }
+
         return {
           hasPlayed: Boolean(parsed.hasPlayed),
-          mana: Number(parsed.mana || 0),
-          unlockedMaps: Math.max(1, Number(parsed.unlockedMaps || 1)),
-          premium: parsed.premium || {},
-          upgrades: parsed.upgrades || {},
-          selectedChar: parsed.selectedChar || "arcano",
-          selectedMap: parsed.selectedMap || "green",
-          bestTime: Number(parsed.bestTime || 0),
+          mana,
+          unlockedMaps,
+          premium,
+          upgrades,
+          selectedChar: validCharIds.includes(parsed.selectedChar) ? parsed.selectedChar : "arcano",
+          selectedMap: validMapIds.includes(parsed.selectedMap) ? parsed.selectedMap : "green",
+          bestTime,
           muted: Boolean(parsed.muted)
         };
       }
@@ -418,7 +453,11 @@
   function persist() {
     save.selectedChar = selectedChar;
     save.selectedMap = selectedMap;
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    } catch (err) {
+      console.warn("persist failed", err);
+    }
   }
 
   function loadSprite(src) {
@@ -788,7 +827,11 @@
       telegraphs: [],
       chests: [],
       choices: [],
-      cardAuto: 0
+      cardAuto: 0,
+      events: {
+        plagueTotem: false,
+        plagueRift: false
+      }
     };
 
     addWeapon(character.weapon);
@@ -796,14 +839,20 @@
     el.shopScreen.classList.add("is-hidden");
     el.endScreen.classList.add("is-hidden");
     el.levelScreen.classList.add("is-hidden");
+    el.pauseScreen.classList.add("is-hidden");
     el.hud.classList.remove("is-hidden");
     el.sysBtns.classList.remove("is-hidden");
-    if (el.pauseBtn) el.pauseBtn.textContent = "II";
+    if (el.pauseBtn) {
+      el.pauseBtn.textContent = "Pausar";
+      el.pauseBtn.classList.remove("is-paused");
+      el.pauseBtn.setAttribute("aria-label", "Pausar");
+      el.pauseBtn.title = "Pausar";
+    }
     gamesStarted += 1;
     cgGameplayStop();
     cgGameplayStart();
 
-    for (let i = 0; i < 18; i += 1) {
+    for (let i = 0; i < 25; i += 1) {
       const type = i % 3 === 0 ? "goblin" : i % 5 === 0 ? "bat" : "slime";
       queueSpawn(type, 250 + Math.random() * 340, Math.random() * TAU, 0.12 + Math.random() * 0.3);
     }
@@ -818,7 +867,9 @@
     const goldMana = Math.floor(game.gold * 0.25);
     const mana = baseMana + goldMana;
     save.mana += mana;
-    save.bestTime = Math.max(save.bestTime || 0, seconds);
+    const prevBestTime = save.bestTime || 0;
+    save.bestTime = Math.max(prevBestTime, seconds);
+    const isNewBest = seconds > prevBestTime;
     if (won) {
       const mapIndex = MAPS.findIndex((m) => m.id === game.map.id);
       if (mapIndex >= 0 && save.unlockedMaps === mapIndex + 1 && save.unlockedMaps < MAPS.length) {
@@ -834,12 +885,14 @@
     el.endScreen.classList.remove("is-hidden");
     el.endEyebrow.textContent = won ? "Vitoria" : "Run encerrada";
     el.endTitle.textContent = won ? "A praga recuou" : "A horda venceu";
+    const recordLabel = isNewBest ? "Recorde (novo!)" : "Recorde";
     el.endStats.innerHTML = [
       ["Tempo", formatTime(seconds)],
       ["Abates", String(game.killCount)],
       ["Level", String(game.player.level)],
       ["Ouro", `${game.gold} -> +${goldMana} mana`],
-      ["Mana", `+${mana}`]
+      ["Mana", `+${mana}`],
+      ...(save.bestTime > 0 ? [[recordLabel, formatTime(save.bestTime)]] : [])
     ].map(([label, value]) => `<div><span>${label}</span>${value}</div>`).join("");
     if (audio) {
       if (won) audio.win();
@@ -923,7 +976,7 @@
   function weaponCooldown(id, level) {
     const def = WEAPONS[id];
     const haste = clamp(1 - toolLevel("haste") * 0.045 - (level - 1) * 0.018, 0.48, 1);
-    return def.cd * haste;
+    return def.cd * haste / ATTACK_SPEED_MULT;
   }
 
   function projectileCount(level) {
@@ -980,6 +1033,7 @@
     }
 
     updateSpawning(dt);
+    updateRunEvents(dt);
     updateSpawnMarks(dt);
     updateEnemies(dt);
     updateWeapons(dt);
@@ -1019,7 +1073,7 @@
   function director() {
     const t = game.t;
     const bossAlive = game.enemies.some((e) => e.boss);
-    if (bossAlive) return { minimum: game.boss2Spawned ? 30 : 25, frequency: 0.8 };
+    if (bossAlive) return scaleDirector({ minimum: game.boss2Spawned ? 30 : 25, frequency: 0.8 }, BOSS_HORDE_DENSITY_MULT);
     let base;
     if (t < 60) base = { minimum: 24, frequency: 0.58 };
     else if (t < 120) base = { minimum: 34, frequency: 0.66 };
@@ -1031,7 +1085,14 @@
       base.minimum = Math.round(base.minimum * 1.5);
       base.frequency *= 0.7;
     }
-    return base;
+    return scaleDirector(base, HORDE_DENSITY_MULT);
+  }
+
+  function scaleDirector(base, density) {
+    return {
+      minimum: Math.round(base.minimum * density),
+      frequency: base.frequency * (density > 1.25 ? 0.92 : 1)
+    };
   }
 
   function spawnPool() {
@@ -1067,6 +1128,116 @@
     }
   }
 
+  function updateRunEvents(dt) {
+    if (!game.events.plagueTotem && game.t >= 30) {
+      game.events.plagueTotem = true;
+      spawnPlagueTotem("totem");
+    }
+    if (!game.events.plagueRift && game.t >= 75) {
+      game.events.plagueRift = true;
+      spawnPlagueTotem("rift");
+    }
+  }
+
+  function spawnPlagueTotem(kind) {
+    const p = game.player;
+    const forward = p.lastDirX || p.lastDirY;
+    const baseAngle = forward ? Math.atan2(p.lastDirY, p.lastDirX) : Math.random() * TAU;
+    const angle = baseAngle + rand(-0.8, 0.8);
+    const distance = kind === "rift" ? 340 : 285;
+    const x = p.x + Math.cos(angle) * distance;
+    const y = p.y + Math.sin(angle) * distance;
+    const hp = (kind === "rift" ? 165 : 120) * game.map.hpMult;
+    const name = kind === "rift" ? "Fenda da Praga" : "Totem da Praga";
+    game.spawnMarks.push({
+      x,
+      y,
+      type: "totem",
+      delay: 0.82,
+      t: 0,
+      r: kind === "rift" ? 56 : 46,
+      extra: {
+        name,
+        hp,
+        maxHp: hp,
+        r: kind === "rift" ? 29 : 24,
+        color: kind === "rift" ? "#ff6b9d" : "#b985ff",
+        eventKind: kind,
+        pulseTimer: kind === "rift" ? 1.3 : 1.6,
+        collapseTimer: kind === "rift" ? 19 : 17,
+        rewardXp: kind === "rift" ? 34 : 24,
+        rewardGold: kind === "rift" ? 18 : 12
+      }
+    });
+    game.telegraphs.push({
+      type: "circle",
+      x,
+      y,
+      r: kind === "rift" ? 120 : 96,
+      life: 0.82,
+      max: 0.82,
+      color: kind === "rift" ? "#ff6b9d" : "#b985ff"
+    });
+    showToast(`${name} surgiu`, 2);
+    game.shake = Math.max(game.shake, kind === "rift" ? 7 : 5);
+    if (audio) audio.boss();
+  }
+
+  function updateTotem(enemy, dt) {
+    enemy.pulseTimer -= dt;
+    enemy.collapseTimer -= dt;
+    if (enemy.pulseTimer <= 0) {
+      enemy.pulseTimer = enemy.eventKind === "rift" ? 1.75 : 2.15;
+      spawnTotemPulse(enemy, false);
+    }
+    if (enemy.collapseTimer <= 0) {
+      collapseTotem(enemy);
+    }
+  }
+
+  function spawnTotemPulse(enemy, heavy) {
+    const count = heavy ? (enemy.eventKind === "rift" ? 12 : 9) : (enemy.eventKind === "rift" ? 5 : 4);
+    const pool = enemy.eventKind === "rift"
+      ? [["goblin", 28], ["bat", 24], ["skeleton", 34], ["bomber", 14]]
+      : [["slime", 44], ["goblin", 34], ["bat", 16], ["skeleton", 6]];
+    for (let i = 0; i < count; i += 1) {
+      const type = weightedEnemy(pool);
+      const angle = (i / count) * TAU + rand(-0.25, 0.25);
+      const distance = rand(70, heavy ? 165 : 125);
+      game.spawnMarks.push({
+        x: enemy.x + Math.cos(angle) * distance,
+        y: enemy.y + Math.sin(angle) * distance,
+        type,
+        delay: heavy ? rand(0.18, 0.52) : rand(0.32, 0.68),
+        t: 0,
+        r: ENEMY_TYPES[type].r + 8
+      });
+    }
+    game.telegraphs.push({
+      type: "circle",
+      x: enemy.x,
+      y: enemy.y,
+      r: heavy ? 150 : 105,
+      life: 0.46,
+      max: 0.46,
+      color: enemy.color
+    });
+    for (let i = 0; i < (heavy ? 18 : 10); i += 1) {
+      addParticle(enemy.x, enemy.y, enemy.color, rand(2, 4.5), rand(80, 230), Math.random() * TAU, rand(0.25, 0.55));
+    }
+    game.shake = Math.max(game.shake, heavy ? 7 : 3.5);
+  }
+
+  function collapseTotem(enemy) {
+    if (enemy.dead) return;
+    enemy.dead = true;
+    spawnTotemPulse(enemy, true);
+    spawnAsh(enemy);
+    addText(enemy.x, enemy.y - 34, "Fenda!", "#ff6b9d", 1.18);
+    showToast(`${enemy.name} abriu uma horda`, 1.8);
+    if (audio) audio.boss();
+  }
+
   function queueSpawn(type, distance = null, angle = null, delay = 0.42) {
     const p = game.player;
     const forwardChance = Math.random() < 0.35 && (p.lastDirX || p.lastDirY);
@@ -1086,7 +1257,7 @@
     for (const mark of game.spawnMarks) {
       mark.t += dt;
       if (mark.t >= mark.delay) {
-        spawnEnemy(mark.type, mark.x, mark.y);
+        spawnEnemy(mark.type, mark.x, mark.y, mark.extra || {});
         mark.dead = true;
       }
     }
@@ -1131,6 +1302,16 @@
       spawnBoss1();
     }
     if (game.boss1Defeated && !game.boss2Spawned && game.t >= 360) {
+      spawnBoss2();
+    }
+    if (game.boss1Spawned && !game.boss1Defeated && !game.boss1Enraged && game.t >= 480) {
+      game.boss1Enraged = true;
+      const boss = game.enemies.find(e => e.type === "boss1");
+      if (boss) { boss.speed = Math.round(boss.speed * 1.6); boss.dmg = Math.round(boss.dmg * 1.5); }
+      showToast("O Brutamontes enraiveceu!", 2.5);
+      game.shake = 12;
+    }
+    if (!game.boss2Spawned && game.t >= 600) {
       spawnBoss2();
     }
   }
@@ -1244,7 +1425,9 @@
 
       if (enemy.dead) continue;
 
-      if (enemy.boss) {
+      if (enemy.kind === "totem") {
+        updateTotem(enemy, dt);
+      } else if (enemy.boss) {
         updateBoss(enemy, dt);
       } else {
         updateNormalEnemy(enemy, dt);
@@ -1258,7 +1441,7 @@
       const dx = p.x - enemy.x;
       const dy = p.y - enemy.y;
       const rr = p.r + enemy.r;
-      if (dx * dx + dy * dy < rr * rr && enemy.contactCd <= 0) {
+      if (enemy.kind !== "totem" && dx * dx + dy * dy < rr * rr && enemy.contactCd <= 0) {
         if (enemy.kind === "bomber") {
           explode(enemy.x, enemy.y, 66, enemy.dmg * 1.15, "#ff9f43", true);
           killEnemy(enemy, true);
@@ -1777,18 +1960,23 @@
 
   function killEnemy(enemy, noDrop = false) {
     if (enemy.dead) return;
+    const isTotem = enemy.kind === "totem";
     enemy.dead = true;
-    game.killCount += enemy.boss ? 0 : 1;
+    game.killCount += enemy.boss || isTotem ? 0 : 1;
     spawnDeath(enemy);
     spawnAsh(enemy);
-    game.shake = Math.max(game.shake, enemy.boss ? 14 : enemy.kind === "golem" ? 4 : 1.7);
+    game.shake = Math.max(game.shake, enemy.boss ? 14 : isTotem ? 8 : enemy.kind === "golem" ? 4 : 1.7);
     if (audio) {
       if (enemy.boss) audio.boss();
       else audio.kill();
     }
     if (!noDrop) {
-      dropGem(enemy.x, enemy.y, enemy.xp + (enemy.boss ? 30 : 0));
-      if (!enemy.boss && Math.random() < 0.3) dropGold(enemy.x, enemy.y, 4);
+      if (isTotem) {
+        rewardTotem(enemy);
+      } else {
+        dropGem(enemy.x, enemy.y, enemy.xp + (enemy.boss ? 30 : 0), !enemy.boss);
+        if (!enemy.boss && Math.random() < 0.3) dropGold(enemy.x, enemy.y, 4);
+      }
     }
     if (enemy.kind === "bomber" && !noDrop) {
       explode(enemy.x, enemy.y, 58, enemy.dmg * 0.7, "#ff9f43", true);
@@ -1810,6 +1998,24 @@
       game.victory = true;
       endRun(true);
     }
+  }
+
+  function rewardTotem(enemy) {
+    const totalXp = enemy.rewardXp || 24;
+    const chunks = enemy.eventKind === "rift" ? 6 : 5;
+    for (let i = 0; i < chunks; i += 1) {
+      dropGem(enemy.x + rand(-12, 12), enemy.y + rand(-10, 10), totalXp / chunks, false);
+    }
+    const goldChunks = enemy.eventKind === "rift" ? 3 : 2;
+    for (let i = 0; i < goldChunks; i += 1) {
+      dropGold(enemy.x + rand(-10, 10), enemy.y + rand(-8, 8), Math.ceil((enemy.rewardGold || 12) / goldChunks));
+    }
+    for (let i = 0; i < 24; i += 1) {
+      addParticle(enemy.x, enemy.y, enemy.color, rand(2.2, 5.8), rand(120, 360), Math.random() * TAU, rand(0.35, 0.75));
+    }
+    addText(enemy.x, enemy.y - 38, "Quebrou!", enemy.color, 1.22);
+    showToast(`${enemy.name} destruido: XP e ouro`, 1.8);
+    if (audio) audio.level();
   }
 
   function damagePlayer(amount) {
@@ -1839,14 +2045,14 @@
     }
   }
 
-  function dropGem(x, y, value) {
+  function dropGem(x, y, value, scaleCommon = true) {
     const a = Math.random() * TAU;
     game.gems.push({
       x,
       y,
       vx: Math.cos(a) * rand(50, 150),
       vy: Math.sin(a) * rand(50, 150),
-      value,
+      value: scaleCommon ? value * COMMON_XP_MULT : value,
       r: 7,
       bounce: 1
     });
@@ -2176,6 +2382,11 @@
         <span class="upgradeDesc">${choice.desc}</span>
         <small>${index + 1} - ${choice.rarity.name}</small>
       `;
+      if (index === 0) {
+        const timerBar = document.createElement("div");
+        timerBar.className = "cardTimerBar";
+        button.appendChild(timerBar);
+      }
       button.addEventListener("click", () => applyChoice(index));
       el.cardGrid.appendChild(button);
     });
@@ -2208,9 +2419,18 @@
     el.goldText.textContent = `${game.gold} ouro`;
 
     const items = [];
-    for (const [id, state] of Object.entries(p.weapons)) items.push({ code: WEAPONS[id].code, level: state.level, color: WEAPONS[id].color });
-    for (const [id, level] of Object.entries(p.tools)) items.push({ code: TOOLS[id].code, level, color: "#d9f6c5" });
-    el.loadout.innerHTML = items.map((item) => `<div class="loadoutItem" style="background:${item.color}">${item.code}<i>${item.level}</i></div>`).join("");
+    for (const [id, state] of Object.entries(p.weapons)) items.push({ id, name: WEAPONS[id].name, level: state.level, color: WEAPONS[id].color });
+    for (const [id, level] of Object.entries(p.tools)) items.push({ id, name: TOOLS[id].name, level, color: "#d9f6c5" });
+    el.loadout.innerHTML = items.map((item) => {
+      const iconId = UPGRADE_ICON_BY_ID[item.id] || "heal";
+      const iconIndex = UPGRADE_ICON_INDEX[iconId] ?? UPGRADE_ICON_INDEX.heal;
+      return `
+        <div class="loadoutItem" title="${item.name} Lv${item.level}" style="--item-color:${item.color};--icon-x:${(iconIndex % 4) * -32}px;--icon-y:${Math.floor(iconIndex / 4) * -32}px">
+          <span class="loadoutIcon" aria-hidden="true"></span>
+          <i>${item.level}</i>
+        </div>
+      `;
+    }).join("");
   }
 
   function draw() {
@@ -2533,6 +2753,12 @@
     ctx.strokeStyle = "#213326";
     ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
 
+    if (enemy.kind === "totem") {
+      drawTotem(enemy);
+      ctx.restore();
+      return;
+    }
+
     const enemySheet = sprites.enemies[enemy.kind];
     if (ready(enemySheet)) {
       const frame = Math.floor(game.t * 8 + enemy.phase) % 2;
@@ -2631,6 +2857,70 @@
     drawSlowOverlay(enemy);
     drawEnemyHp(enemy);
     ctx.restore();
+  }
+
+  function drawTotem(enemy) {
+    const pulse = 1 + Math.sin(game.t * 5.5 + enemy.phase) * 0.07;
+    const warning = clamp((enemy.collapseTimer || 0) / (enemy.eventKind === "rift" ? 19 : 17), 0, 1);
+    ctx.save();
+    ctx.scale(pulse, pulse);
+    ctx.globalAlpha = 0.18 + (1 - warning) * 0.18;
+    ctx.fillStyle = enemy.color;
+    ctx.beginPath();
+    ctx.arc(0, 2, enemy.r * 1.75, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#213326";
+    ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : enemy.color;
+    if (enemy.eventKind === "rift") {
+      ctx.beginPath();
+      ctx.moveTo(0, -34);
+      ctx.lineTo(22, -8);
+      ctx.lineTo(13, 28);
+      ctx.lineTo(-13, 28);
+      ctx.lineTo(-22, -8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#fff0f6";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-4, -24);
+      ctx.lineTo(5, -5);
+      ctx.lineTo(-3, 8);
+      ctx.lineTo(6, 25);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(0, -32);
+      ctx.lineTo(20, -10);
+      ctx.lineTo(14, 22);
+      ctx.lineTo(0, 32);
+      ctx.lineTo(-14, 22);
+      ctx.lineTo(-20, -10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#ffe4a8";
+      ctx.beginPath();
+      ctx.arc(0, -6, 8, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.rotate(game.t * 1.4);
+    ctx.strokeStyle = enemy.eventKind === "rift" ? "#ffcf5a" : "#e4d4ff";
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.arc(0, 2, enemy.r * 1.38, 0.2, Math.PI * 1.25);
+    ctx.stroke();
+    ctx.restore();
+    drawEnemyHp(enemy);
   }
 
   function drawBoss(enemy) {
@@ -2972,12 +3262,18 @@
     if (!game || (mode !== "playing" && mode !== "paused")) return;
     if (mode === "playing") {
       mode = "paused";
-      showToast("Pausado", 10);
+      el.pauseScreen.classList.remove("is-hidden");
+      if (el.pauseMuteToggle) el.pauseMuteToggle.textContent = muted ? "Som: Desligado" : "Som: Ligado";
     } else {
       mode = "playing";
-      showToast("Voltando", 0.7);
+      el.pauseScreen.classList.add("is-hidden");
     }
-    if (el.pauseBtn) el.pauseBtn.textContent = mode === "paused" ? ">" : "II";
+    if (el.pauseBtn) {
+      el.pauseBtn.textContent = mode === "paused" ? "Continuar" : "Pausar";
+      el.pauseBtn.classList.toggle("is-paused", mode === "paused");
+      el.pauseBtn.setAttribute("aria-label", mode === "paused" ? "Continuar" : "Pausar");
+      el.pauseBtn.title = mode === "paused" ? "Continuar" : "Pausar";
+    }
   }
 
   function frame(now) {
@@ -3003,7 +3299,7 @@
     if ((key === "p" || key === "escape") && game) {
       togglePause();
     }
-    if (key === "r" && (mode === "ended" || mode === "paused")) startGame();
+    if (key === "r" && mode === "ended") startGame();
   }
 
   function onKeyUp(event) {
@@ -3061,6 +3357,7 @@
   window.addEventListener("resize", resize);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", () => keys.clear());
   document.addEventListener("visibilitychange", () => setPause("hidden", document.hidden));
   canvas.addEventListener("pointerdown", canvasPointerDown);
   canvas.addEventListener("pointermove", canvasPointerMove);
@@ -3080,6 +3377,32 @@
   el.muteBtn.addEventListener("click", () => {
     resumeAudio();
     setMuted(!muted);
+  });
+  el.pauseResumeBtn.addEventListener("click", togglePause);
+  el.pauseRestartBtn.addEventListener("click", () => {
+    if (el.pauseRestartBtn.dataset.confirm === "1") {
+      startGame();
+    } else {
+      el.pauseRestartBtn.dataset.confirm = "1";
+      el.pauseRestartBtn.textContent = "Tem certeza?";
+      setTimeout(() => {
+        el.pauseRestartBtn.dataset.confirm = "";
+        el.pauseRestartBtn.textContent = "Recomecar";
+      }, 3000);
+    }
+  });
+  el.pauseMenuBtn.addEventListener("click", () => {
+    el.pauseScreen.classList.add("is-hidden");
+    cgGameplayStop();
+    mode = "menu";
+    game = null;
+    renderMenu();
+    if (el.pauseBtn) el.pauseBtn.textContent = "II";
+  });
+  el.pauseMuteToggle.addEventListener("click", () => {
+    resumeAudio();
+    setMuted(!muted);
+    if (el.pauseMuteToggle) el.pauseMuteToggle.textContent = muted ? "Som: Desligado" : "Som: Ligado";
   });
 
   setMuted(muted);

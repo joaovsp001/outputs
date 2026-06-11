@@ -41,7 +41,7 @@
     </div>
 
     <div id="sysBtns" class="sysBtns is-hidden">
-      <button id="pauseBtn" class="iconBtn" aria-label="Pausar" title="Pausar">II</button>
+      <button id="pauseBtn" class="iconBtn" aria-label="Pausar" title="Pausar">Pausar</button>
       <button id="muteBtn" class="iconBtn" aria-label="Som" title="Som">🔊</button>
     </div>
 
@@ -102,6 +102,19 @@
         <div class="endActions">
           <button id="againButton" class="primaryBtn">Jogar de novo</button>
           <button id="menuButton" class="ghostBtn">Voltar</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="pauseScreen" class="screen overlayScreen is-hidden">
+      <div class="pausePanel">
+        <p class="eyebrow">Jogo pausado</p>
+        <h2>Pausado</h2>
+        <div class="pauseActions">
+          <button id="pauseResumeBtn" class="primaryBtn">Continuar</button>
+          <button id="pauseRestartBtn" class="ghostBtn">Recomecar</button>
+          <button id="pauseMenuBtn" class="ghostBtn">Menu</button>
+          <button id="pauseMuteToggle" class="ghostBtn">Som: Ligado</button>
         </div>
       </div>
     </section>
